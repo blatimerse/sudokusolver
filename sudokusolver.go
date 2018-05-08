@@ -52,7 +52,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -62,78 +61,89 @@ import (
 
 type Sudoku [9][9]int
 
-func (s Sudoku) isValid(col, row, val int) (valid bool) {
+func (s Sudoku) isValid(col, row, val int) bool {
+	var reason string
 	defer func() {
-		fmt.Printf("(%d,%d): %d -- %v\n", col, row, val, valid)
+		fmt.Printf("(%d,%d): %d -- %v\n", col, row, val, reason)
 	}()
 
 	for i := 0; i < 9; i++ {
-		if s[i][row] == val || s[col][i] == val {
-			return
+		if s[i][row] == val {
+			reason = fmt.Sprintf("%d at (%d,%d)", val, i, row)
+			return false
+		}
+
+		if s[col][i] == val {
+			reason = fmt.Sprintf("%d at (%d,%d)", val, col, i)
+			return false
 		}
 	}
-	topX, topY := col/3*3, row/3*3
-	for i := topX; i < topX+3; i++ {
+	leftX, topY := col/3*3, row/3*3
+	for i := leftX; i < leftX+3; i++ {
 		for j := topY; j < topY+3; j++ {
 			if s[i][j] == val {
-				return
+				reason = fmt.Sprintf("%d at (%d,%d)", val, i, j)
+				return false
 			}
 		}
 	}
-	valid = true
-	return
+	reason = "pass"
+	return true
 }
 
-func (s Sudoku) solve(col, row int) (Sudoku, error) {
-	if row >= 9 {
-		return s, nil
+func (s *Sudoku) solve(col, row int) bool {
+	nextpos := (col + row*9) + 1
+	if nextpos >= 9*9 {
+		return true
 	}
-	if col >= 9 {
-		return s.solve(0, row+1)
-	}
-	if s[row][col] != 0 {
-		return s.solve(col, row+1)
+
+	fmt.Printf("current: %d: (%d,%d)\n", col+9*row, col, row)
+	nextcol, nextrow := nextpos%9, nextpos/9
+	fmt.Printf("  nextpos: %d: (%d,%d)\n", nextpos, nextcol, nextrow)
+	if s[col][row] != 0 {
+		return s.solve(nextcol, nextrow)
 	}
 
 	for v := 1; v <= 9; v++ {
 		if !s.isValid(col, row, v) {
 			continue
 		}
-		s[row][col] = v
-		new, err := s.solve(col, row)
-		if err == nil {
-			return new, err
+		s[col][row] = v
+		if s.solve(nextcol, nextrow) {
+			return true
 		}
+		s[col][row] = 0
 	}
-	return s, errors.New("no solution")
+	return false
 }
 
-func (s Sudoku) Solve() (Sudoku, error) {
-	return s.solve(0, 0)
+func (s Sudoku) Solve() (Sudoku, bool) {
+	// make a copy to return as the solution
+	solution := s
+	return solution, solution.solve(0, 0)
 }
 
-func readPuzzle(r io.Reader) (*Sudoku, error) {
+func (s *Sudoku) Read(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 	var col, row int
-	var puzzle Sudoku
 	for scanner.Scan() {
 		line := scanner.Text()
 		ws := bufio.NewScanner(strings.NewReader(line))
 		ws.Split(bufio.ScanWords)
 		for ws.Scan() {
 			if col >= 9 {
-				return nil, fmt.Errorf("Line '%s' too long", line)
+				return fmt.Errorf("Line '%s' too long", line)
 			}
 			d := ws.Text()
 			if len(d) != 1 {
-				return nil, fmt.Errorf("Entry '%s' too long", d)
+				return fmt.Errorf("Entry '%s' too long", d)
 			}
 			if d != "_" {
 				val, err := strconv.Atoi(d)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				puzzle[col][row] = val
+				s[col][row] = val
 			}
 
 			col++
@@ -143,34 +153,47 @@ func readPuzzle(r io.Reader) (*Sudoku, error) {
 			continue
 		}
 		if err := ws.Err(); err != nil {
-			return nil, err
+			return err
 		}
 		row++
 		col = 0
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return err
 	}
 
-	return &puzzle, nil
+	return nil
+}
+
+func (s Sudoku) String() string {
+	var str string
+	for row := 0; row < 9; row++ {
+		for col := 0; col < 9; col++ {
+			e := s[col][row]
+			switch {
+			case e == 0:
+				str += "-"
+			case e > 0 && e <= 9:
+				str += string('0' + e)
+			default:
+				panic(fmt.Sprintf("byte %x is not a valid digit", e))
+			}
+			str += " "
+		}
+		str += "\n"
+	}
+	return str
 }
 
 func main() {
-	s, err := readPuzzle(os.Stdin)
+	var puzzle Sudoku
+	err := puzzle.Read(os.Stdin)
 	if err != nil {
 		fmt.Printf("Error reading puzzle: %v\n", err)
 		os.Exit(-1)
 	}
 
-	solution, err := s.Solve()
-	for _, line := range solution {
-		for _, e := range line {
-			if e == 0 {
-				fmt.Print(" _")
-			} else {
-				fmt.Printf(" %d", e)
-			}
-		}
-		fmt.Println()
-	}
+	fmt.Printf("Original:\n%s\n", puzzle)
+	solution, _ := puzzle.Solve()
+	fmt.Printf("Solution:\n%s\n", solution)
 }

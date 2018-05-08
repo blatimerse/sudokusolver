@@ -62,19 +62,12 @@ import (
 type Sudoku [9][9]int
 
 func (s Sudoku) isValid(col, row, val int) bool {
-	var reason string
-	defer func() {
-		fmt.Printf("(%d,%d): %d -- %v\n", col, row, val, reason)
-	}()
-
 	for i := 0; i < 9; i++ {
 		if s[i][row] == val {
-			reason = fmt.Sprintf("%d at (%d,%d)", val, i, row)
 			return false
 		}
 
 		if s[col][i] == val {
-			reason = fmt.Sprintf("%d at (%d,%d)", val, col, i)
 			return false
 		}
 	}
@@ -82,24 +75,23 @@ func (s Sudoku) isValid(col, row, val int) bool {
 	for i := leftX; i < leftX+3; i++ {
 		for j := topY; j < topY+3; j++ {
 			if s[i][j] == val {
-				reason = fmt.Sprintf("%d at (%d,%d)", val, i, j)
 				return false
 			}
 		}
 	}
-	reason = "pass"
 	return true
 }
 
+var iterations int
+
 func (s *Sudoku) solve(col, row int) bool {
+	defer func() { iterations++ }()
 	nextpos := (col + row*9) + 1
-	if nextpos >= 9*9 {
+	if nextpos > 9*9 {
 		return true
 	}
 
-	fmt.Printf("current: %d: (%d,%d)\n", col+9*row, col, row)
 	nextcol, nextrow := nextpos%9, nextpos/9
-	fmt.Printf("  nextpos: %d: (%d,%d)\n", nextpos, nextcol, nextrow)
 	if s[col][row] != 0 {
 		return s.solve(nextcol, nextrow)
 	}
@@ -186,14 +178,23 @@ func (s Sudoku) String() string {
 }
 
 func main() {
-	var puzzle Sudoku
-	err := puzzle.Read(os.Stdin)
-	if err != nil {
-		fmt.Printf("Error reading puzzle: %v\n", err)
-		os.Exit(-1)
-	}
+	for _, f := range os.Args[1:] {
+		iterations = 0
+		var puzzle Sudoku
+		fh, err := os.Open(f)
+		if err != nil {
+			fmt.Printf("Error reading puzzle file %s: %v\n", f, err)
+			os.Exit(-1)
+		}
+		err = puzzle.Read(fh)
+		if err != nil {
+			fmt.Printf("Error reading puzzle: %v\n", err)
+			os.Exit(-1)
+		}
 
-	fmt.Printf("Original:\n%s\n", puzzle)
-	solution, _ := puzzle.Solve()
-	fmt.Printf("Solution:\n%s\n", solution)
+		fmt.Printf("Original:\n%s\n", puzzle)
+		solution, _ := puzzle.Solve()
+		fmt.Println(f)
+		fmt.Printf("Solution in %d iterations:\n%s\n", iterations, solution)
+	}
 }
